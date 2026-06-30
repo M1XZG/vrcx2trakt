@@ -1,0 +1,41 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.spec.bak
+
+# PyInstaller working dirs
+/build/
+/dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local working/state and secrets (never commit)
+tmp/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+credentials.json
+token.json
+candidates.json
+review.csv
+match-cache.json
+pushed-state.json
+push-log.json
+
+# OS noise
+.DS_Store
+Thumbs.db

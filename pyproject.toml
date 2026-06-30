@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vrcx2trakt"
+version = "1.0.0"
+description = "Sync movies and episodes watched in VRChat cinema worlds to your Trakt.tv history."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "M1XZG" }]
+keywords = ["vrchat", "vrcx", "trakt", "movies", "sync", "watched-history"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "requests>=2.25",
+]
+
+[project.urls]
+Homepage = "https://github.com/M1XZG/vrcx2trakt"
+Repository = "https://github.com/M1XZG/vrcx2trakt"
+Issues = "https://github.com/M1XZG/vrcx2trakt/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pyinstaller>=6"]
+
+[project.scripts]
+vrcx2trakt = "vrcx2trakt.cli:main"
+
+[project.gui-scripts]
+vrcx2trakt-gui = "vrcx2trakt.gui:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
