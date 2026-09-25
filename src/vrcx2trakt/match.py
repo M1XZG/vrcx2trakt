@@ -29,13 +29,21 @@ CSV_HEADER = [
 
 # Strip a trailing "(YYYY)" and anything after the first " - " to recover the
 # bare show name from an episode label like "Toradora - Your Song".
-_YEAR_PAREN = re.compile(r"\s*\(\d{3,4}\)\s*$")
+_YEAR_PAREN = re.compile(r"\s*\((\d{4})\)\s*$")
 
 
 def show_name_from_episode(show_field: str) -> str:
-    name = show_field.split(" - ", 1)[0].strip()
-    name = _YEAR_PAREN.sub("", name).strip()
+    name, _, _ = show_details_from_episode(show_field)
     return name
+
+
+def show_details_from_episode(show_field: str) -> tuple[str, int | None, str | None]:
+    name, separator, episode_title = show_field.partition(" - ")
+    name = name.strip()
+    year_match = _YEAR_PAREN.search(name)
+    year = int(year_match.group(1)) if year_match else None
+    name = _YEAR_PAREN.sub("", name).strip()
+    return name, year, episode_title.strip() if separator else None
 
 
 def load_cache(path: str | os.PathLike[str]) -> dict:
@@ -55,7 +63,8 @@ def save_cache(path: str | os.PathLike[str], cache: dict) -> None:
 def cache_key(cand: dict) -> str:
     if cand["media_type"] == "episode":
         ep = cand.get("episode") or {}
-        return f"ep|{show_name_from_episode(ep.get('show', ''))}|{ep.get('season')}|{ep.get('episode')}"
+        show, year, _ = show_details_from_episode(ep.get("show", ""))
+        return f"ep|{show}|{year or ''}|{ep.get('season')}|{ep.get('episode')}"
     return f"mv|{cand['parsed_title']}|{cand.get('parsed_year')}"
 
 
@@ -64,10 +73,16 @@ def resolve(client, cand: dict) -> dict | None:
     mt = cand["media_type"]
     if mt == "episode":
         ep = cand.get("episode") or {}
-        show = show_name_from_episode(ep.get("show", ""))
+        show, year, episode_title = show_details_from_episode(ep.get("show", ""))
         if not show:
             return None
-        m = client.resolve_episode(show, ep.get("season"), ep.get("episode"))
+        m = client.resolve_episode(
+            show,
+            ep.get("season"),
+            ep.get("episode"),
+            year=year,
+            episode_title=episode_title,
+        )
         if not m or not m.get("episode_trakt_id"):
             return None
         s, n = m.get("season"), m.get("number")

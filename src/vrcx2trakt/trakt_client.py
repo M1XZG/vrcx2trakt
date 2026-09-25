@@ -215,59 +215,87 @@ class TraktClient:
             "tmdb": ids.get("tmdb"),
         }
 
-    def search_show(self, title: str) -> dict[str, Any] | None:
+    def search_shows(
+        self,
+        title: str,
+        year: int | str | None = None,
+    ) -> list[dict[str, Any]]:
         results = self._request("GET", "/search/show", params={"query": title, "limit": 5}, auth=False)
-        if not results:
-            return None
+        normalized_title = " ".join(title.casefold().split())
+        target_year = int(year) if year is not None else None
+        matches = []
+        for result in results:
+            show = result.get("show") or {}
+            if " ".join(str(show.get("title") or "").casefold().split()) != normalized_title:
+                continue
+            if target_year is not None and show.get("year") != target_year:
+                continue
+            ids = show.get("ids") or {}
+            matches.append({
+                "trakt_id": ids.get("trakt"),
+                "title": show.get("title"),
+                "year": show.get("year"),
+                "slug": ids.get("slug"),
+                "ids": ids,
+            })
+        return matches
 
-        chosen = results[0]
-        show = chosen.get("show") or {}
-        ids = show.get("ids") or {}
-        return {
-            "trakt_id": ids.get("trakt"),
-            "title": show.get("title"),
-            "year": show.get("year"),
-            "slug": ids.get("slug"),
-            "ids": ids,
-        }
+    def search_show(self, title: str, year: int | str | None = None) -> dict[str, Any] | None:
+        matches = self.search_shows(title, year)
+        return matches[0] if matches else None
 
     def resolve_episode(
         self,
         show_title: str,
         season: int | str | None,
         episode: int | str | None,
+        *,
+        year: int | str | None = None,
+        episode_title: str | None = None,
     ) -> dict[str, Any] | None:
         if season is None or episode is None:
             return None
 
-        show = self.search_show(show_title)
-        if not show:
+        shows = self.search_shows(show_title, year)
+        if not shows:
             return None
 
-        show_ref = show.get("slug") or show.get("trakt_id")
-        if not show_ref:
-            return None
+        resolved = []
+        for show in shows:
+            show_ref = show.get("slug") or show.get("trakt_id")
+            if not show_ref:
+                continue
+            try:
+                ep = self._request(
+                    "GET",
+                    f"/shows/{show_ref}/seasons/{int(season)}/episodes/{int(episode)}",
+                    auth=False,
+                )
+            except TraktAPIError as exc:
+                if exc.status_code == 404:
+                    continue
+                raise
 
-        try:
-            ep = self._request(
-                "GET",
-                f"/shows/{show_ref}/seasons/{int(season)}/episodes/{int(episode)}",
-                auth=False,
-            )
-        except TraktAPIError as exc:
-            if exc.status_code == 404:
-                return None
-            raise
+            ids = ep.get("ids") or {}
+            resolved.append({
+                "show_trakt_id": show.get("trakt_id"),
+                "episode_trakt_id": ids.get("trakt"),
+                "show_title": show.get("title"),
+                "season": ep.get("season"),
+                "number": ep.get("number"),
+                "episode_title": ep.get("title"),
+            })
 
-        ids = ep.get("ids") or {}
-        return {
-            "show_trakt_id": show.get("trakt_id"),
-            "episode_trakt_id": ids.get("trakt"),
-            "show_title": show.get("title"),
-            "season": ep.get("season"),
-            "number": ep.get("number"),
-            "episode_title": ep.get("title"),
-        }
+        if episode_title:
+            normalized_episode_title = " ".join(episode_title.casefold().split())
+            exact = [
+                item for item in resolved
+                if " ".join(str(item.get("episode_title") or "").casefold().split())
+                == normalized_episode_title
+            ]
+            if exact:
+                return exact[0]
+        return resolved[0] if len(resolved) == 1 else None
 
     def add_history(
         self,
