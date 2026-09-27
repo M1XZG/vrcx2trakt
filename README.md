@@ -8,7 +8,7 @@ Sync movies and episodes watched in VRChat cinema worlds to your Trakt.tv watche
 
 ## Why
 
-If you watch films, TV, or anime in VRChat cinema worlds such as Popcorn Palace, those plays can be trapped in VRCX logs. This tool organises them into a Trakt-friendly workflow so your watched history stays useful without manual re-entry.
+If you watch films, TV, or anime in VRChat cinema worlds such as Popcorn Palace or Illumination Media Player, those plays can be trapped in local history. This tool organises them into a Trakt-friendly workflow so your watched history stays useful without manual re-entry.
 
 ## Choose your install
 
@@ -156,10 +156,11 @@ vrcx2trakt paths
 ## How it works
 
 1. Extract reads VRCX `gamelog_video_play` rows for supported VRChat cinema worlds such as Popcorn Palace.
-2. Parsing classifies each entry as a movie, episode, or unknown using source-specific patterns and episode heuristics.
-3. Duplicate plays for the same source, title, year, and watch date are collapsed into one candidate with a play count.
-4. Match writes a review-first CSV, optionally resolving items against Trakt with `--live`.
-5. Push sends approved rows to Trakt and records local pushed state. With `--check-remote`, it also skips items already in Trakt history.
+2. It also reads Illumination Media Player movie URLs from VRChat's `output_log_*.txt` files. Set `VRCHAT_LOG_DIR` or pass `--log-dir` if they cannot be detected automatically.
+3. Parsing classifies each entry as a movie, episode, or unknown using source-specific patterns and episode heuristics.
+4. Duplicate plays for the same source, title, year, and watch date are collapsed into one candidate with a play count.
+5. Match writes a review-first CSV, optionally resolving items against Trakt with `--live`.
+6. Push sends approved rows to Trakt and records local pushed state. With `--check-remote`, it also skips items already in Trakt history.
 
 ## Caveats
 
