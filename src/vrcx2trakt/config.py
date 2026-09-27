@@ -29,8 +29,8 @@ from pathlib import Path
 APP_NAME = "vrcx2trakt"
 LEGACY_APP_NAME = "vrcx-trakt"
 
-# The three VRChat cinema "players" recorded in VRCX gamelog_video_play.video_id.
-SOURCES = ("PopcornPalace", "Movie&Chill", "LSMedia")
+# Cinema sources read from VRCX plus Illumination Media entries read from VRChat logs.
+SOURCES = ("PopcornPalace", "Movie&Chill", "LSMedia", "IlluminationMedia")
 
 
 # --------------------------------------------------------------------------- #
@@ -188,6 +188,16 @@ def _wsl_appdata_globs() -> list[str]:
     return patterns
 
 
+def _wsl_vrchat_log_globs() -> list[str]:
+    """Candidate VRChat log directories visible from WSL."""
+    patterns = []
+    for drive in ("c", "d"):
+        patterns.append(
+            f"/mnt/{drive}/Users/*/AppData/LocalLow/VRChat/VRChat"
+        )
+    return patterns
+
+
 def detect_vrcx_db() -> Path | None:
     """Best-effort location of the live VRCX SQLite database.
 
@@ -237,3 +247,48 @@ def resolve_vrcx_db(explicit: str | os.PathLike[str] | None = None) -> Path:
         "or set the VRCX_DB environment variable. On Windows it is usually "
         "%APPDATA%\\VRCX\\VRCX.sqlite3."
     )
+
+
+def detect_vrchat_log_dir() -> Path | None:
+    """Best-effort location of VRChat's output logs."""
+    override = _env_path("VRCHAT_LOG_DIR")
+    if override and override.is_dir():
+        return override
+
+    candidates: list[str] = []
+    if is_windows():
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            candidates.append(
+                os.path.join(
+                    os.path.dirname(local_app_data),
+                    "LocalLow",
+                    "VRChat",
+                    "VRChat",
+                )
+            )
+    elif is_wsl():
+        for pattern in _wsl_vrchat_log_globs():
+            candidates.extend(sorted(glob.glob(pattern)))
+    else:
+        candidates.append(
+            str(Path.home() / ".local" / "share" / "VRChat" / "VRChat")
+        )
+
+    for candidate in candidates:
+        path = Path(candidate)
+        if path.is_dir():
+            return path
+    return None
+
+
+def resolve_vrchat_log_dir(
+    explicit: str | os.PathLike[str] | None = None,
+) -> Path | None:
+    """Return an explicit or automatically detected VRChat log directory."""
+    if explicit:
+        path = Path(explicit).expanduser()
+        if not path.is_dir():
+            raise FileNotFoundError(f"VRChat log directory not found at: {path}")
+        return path
+    return detect_vrchat_log_dir()

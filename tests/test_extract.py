@@ -30,6 +30,49 @@ def test_parse_lsmedia_movie_with_year():
     assert episode is None
 
 
+def test_parse_illumination_media_movie_with_year():
+    assert extract.parse_video_name(
+        "IlluminationMedia", "The Marksman (2021)"
+    ) == ("The Marksman", 2021, "movie", None)
+
+
+def test_illumination_title_from_url():
+    assert extract.illumination_title_from_url(
+        "https://bh2.imvrcdn.com/movies/The.Marksman.634528/"
+        "The.Marksman.2021.mp4#ac=6"
+    ) == ("The Marksman", 2021)
+
+
+def test_fetch_illumination_rows_only_inside_illumination_world(tmp_path):
+    log_path = tmp_path / "output_log_2026-09-27_19-05-49.txt"
+    log_path.write_text(
+        "\n".join(
+            [
+                "2026.09.27 19:09:46 Debug - [Behaviour] Entering Room: Popcorn Palace",
+                "2026.09.27 19:10:00 Debug - Now Playing: "
+                "https://bh2.imvrcdn.com/movies/Ignored.1/Ignored.2020.mp4#ac=6",
+                "2026.09.27 20:12:08 Debug - [Behaviour] Entering Room: "
+                "Illumination Media Player",
+                "2026.09.27 20:13:37 Debug - Now Playing: "
+                "https://bh2.imvrcdn.com/movies/The.Marksman.634528/"
+                "The.Marksman.2021.mp4#ac=6",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    rows = extract.fetch_illumination_rows(tmp_path)
+
+    assert len(rows) == 1
+    assert rows[0][0].startswith("log:output_log_2026-09-27_19-05-49.txt:")
+    assert rows[0][2:] == (
+        "The Marksman (2021)",
+        "IlluminationMedia",
+        "Illumination Media Player",
+    )
+    assert rows[0][1].endswith("Z")
+
+
 def test_parse_episode_sxe_style():
     title, year, media_type, episode = extract.parse_video_name(
         "PopcornPalace", "86 EIGHTY-SIX - S1E3"

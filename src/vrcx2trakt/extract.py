@@ -1,9 +1,9 @@
 """Extract VRChat cinema watches from the VRCX database into Trakt sync candidates.
 
-Reads a copy of the live VRCX SQLite database, filters the three cinema
-"players" (Popcorn Palace, Movie&Chill, LSMedia), parses each entry into a
-title/year, classifies it as movie/episode/unknown, collapses replays into a
-single watch, and writes ``candidates.json`` into the working directory.
+Reads a copy of the live VRCX SQLite database and supplements it with
+Illumination Media plays from VRChat output logs. Each entry is parsed into a
+title/year, classified as movie/episode/unknown, collapsed into a single watch,
+and written to ``candidates.json``.
 """
 from __future__ import annotations
 
@@ -14,7 +14,9 @@ import re
 import shutil
 import sqlite3
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from . import config
 
@@ -34,6 +36,18 @@ QUALITY_SUFFIX_RE = re.compile(
     re.IGNORECASE,
 )
 TRAILING_EMPTY_DATE_RE = re.compile(r"\s+-\s*$")
+LOG_TIMESTAMP_RE = re.compile(r"^(?P<timestamp>\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2})")
+ENTERING_ROOM_RE = re.compile(r"\[Behaviour\] Entering Room:\s*(?P<world>.+?)\s*$")
+ILLUMINATION_URL_RE = re.compile(
+    r"Now Playing:\s*(?P<url>https?://\S+/movies/\S+?\.mp4(?:[?#]\S*)?)",
+    re.IGNORECASE,
+)
+ILLUMINATION_FILENAME_RE = re.compile(
+    r"^(?P<title>.+)\.(?P<year>\d{4})\.mp4$",
+    re.IGNORECASE,
+)
+ILLUMINATION_WORLD = "Illumination Media Player"
+ILLUMINATION_SOURCE = "IlluminationMedia"
 
 
 def ensure_parent(path: str | os.PathLike[str]) -> None:
@@ -126,7 +140,7 @@ def parse_video_name(source, raw_name):
         if match:
             title = strip_quality_tags(match.group("title"))
             return title, int(match.group("year")), "movie", None
-    elif source in ("Movie&Chill", "LSMedia"):
+    elif source in ("Movie&Chill", "LSMedia", ILLUMINATION_SOURCE):
         match = YEAR_PARENS_RE.match(raw_name)
         if match:
             title = clean_spaces(match.group("title"))
@@ -194,6 +208,62 @@ def fetch_rows(conn):
         "ORDER BY created_at ASC, id ASC" % placeholders
     )
     return conn.execute(query, SOURCES).fetchall()
+
+
+def illumination_title_from_url(url):
+    """Return a title and year encoded in an Illumination Media movie URL."""
+    filename = unquote(Path(urlsplit(url).path).name)
+    match = ILLUMINATION_FILENAME_RE.match(filename)
+    if not match:
+        return None
+    title = clean_spaces(match.group("title").replace(".", " "))
+    if not title:
+        return None
+    return title, int(match.group("year"))
+
+
+def log_timestamp_to_utc(value):
+    """Convert a local VRChat log timestamp to an ISO-8601 UTC timestamp."""
+    local_time = datetime.strptime(value, "%Y.%m.%d %H:%M:%S").astimezone()
+    return local_time.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def fetch_illumination_rows(log_dir):
+    """Read Illumination Media movie starts from available VRChat logs."""
+    if log_dir is None:
+        return []
+
+    rows = []
+    for log_path in sorted(Path(log_dir).glob("output_log_*.txt")):
+        current_world = ""
+        with log_path.open(encoding="utf-8", errors="replace") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                room_match = ENTERING_ROOM_RE.search(line)
+                if room_match:
+                    current_world = clean_spaces(room_match.group("world"))
+                    continue
+                if current_world.casefold() != ILLUMINATION_WORLD.casefold():
+                    continue
+                url_match = ILLUMINATION_URL_RE.search(line)
+                timestamp_match = LOG_TIMESTAMP_RE.match(line)
+                if not url_match or not timestamp_match:
+                    continue
+                parsed = illumination_title_from_url(url_match.group("url"))
+                if not parsed:
+                    continue
+                title, year = parsed
+                rows.append(
+                    (
+                        f"log:{log_path.name}:{line_number}",
+                        log_timestamp_to_utc(timestamp_match.group("timestamp")),
+                        f"{title} ({year})",
+                        ILLUMINATION_SOURCE,
+                        ILLUMINATION_WORLD,
+                    )
+                )
+    return rows
 
 
 def collapse_rows(rows, by_world_id, by_location):
@@ -281,6 +351,7 @@ def summary_text(raw_counts, candidates, out_path) -> str:
 def run_extract(
     db: str | os.PathLike[str] | None = None,
     out: str | os.PathLike[str] | None = None,
+    log_dir: str | os.PathLike[str] | None = None,
     *,
     no_copy: bool = False,
 ) -> dict:
@@ -303,6 +374,11 @@ def run_extract(
     try:
         by_world_id, by_location = load_world_maps(conn)
         rows = fetch_rows(conn)
+        resolved_log_dir = config.resolve_vrchat_log_dir(log_dir)
+        rows.extend(fetch_illumination_rows(resolved_log_dir))
+        by_location.setdefault(
+            ILLUMINATION_WORLD, ("", ILLUMINATION_WORLD)
+        )
         candidates, raw_counts = collapse_rows(rows, by_world_id, by_location)
     finally:
         conn.close()
@@ -322,6 +398,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--db", help="source VRCX DB path (auto-detected if omitted)")
     parser.add_argument("--out", help="output JSON path (default: state dir candidates.json)")
+    parser.add_argument(
+        "--log-dir",
+        help="VRChat output-log directory (auto-detected if omitted)",
+    )
     parser.add_argument("--no-copy", action="store_true",
                         help="skip copying and read an existing DB copy")
     return parser
@@ -329,7 +409,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    result = run_extract(db=args.db, out=args.out, no_copy=args.no_copy)
+    result = run_extract(
+        db=args.db,
+        out=args.out,
+        log_dir=args.log_dir,
+        no_copy=args.no_copy,
+    )
     print(result["summary"])
     return 0
 

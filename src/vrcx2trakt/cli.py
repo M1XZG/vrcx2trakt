@@ -61,7 +61,12 @@ def _whoami(_: argparse.Namespace) -> int:
 
 
 def _extract(args: argparse.Namespace) -> int:
-    result = extract.run_extract(db=args.db, out=args.out, no_copy=args.no_copy)
+    result = extract.run_extract(
+        db=args.db,
+        out=args.out,
+        log_dir=args.log_dir,
+        no_copy=args.no_copy,
+    )
     print(result["summary"])
     return 0
 
@@ -184,11 +189,16 @@ def _gui(_: argparse.Namespace) -> int:
 
 def _paths(_: argparse.Namespace) -> int:
     detected = config.detect_vrcx_db()
+    detected_logs = config.detect_vrchat_log_dir()
     print(f"config_dir:       {_path_text(config.config_dir())}")
     print(f"state_dir:        {_path_text(config.state_dir())}")
     print(f"credentials_path: {_path_text(config.credentials_path())}")
     print(f"token_path:       {_path_text(config.token_path())}")
     print(f"vrcx_db:          {_path_text(detected) if detected else 'not found'}")
+    print(
+        f"vrchat_log_dir:   "
+        f"{_path_text(detected_logs) if detected_logs else 'not found'}"
+    )
     return 0
 
 
@@ -211,6 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     extract_parser = subparsers.add_parser("extract", help="extract VRCX watches to candidates.json")
     extract_parser.add_argument("--db", help="source VRCX DB path, auto-detected if omitted")
     extract_parser.add_argument("--out", help="output JSON path, defaults to the state dir")
+    extract_parser.add_argument("--log-dir", help="VRChat output-log directory")
     extract_parser.add_argument("--no-copy", action="store_true", help="read the given DB directly")
     extract_parser.set_defaults(func=_extract)
 
