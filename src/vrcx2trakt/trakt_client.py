@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -12,6 +13,10 @@ from typing import Any
 import requests
 
 from . import __version__, config
+
+
+def _normalized_show_title(title: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", "", title.casefold()).split())
 
 
 class TraktError(RuntimeError):
@@ -220,13 +225,15 @@ class TraktClient:
         title: str,
         year: int | str | None = None,
     ) -> list[dict[str, Any]]:
+        normalized_title = _normalized_show_title(title)
+        if not normalized_title:
+            return []
         results = self._request("GET", "/search/show", params={"query": title, "limit": 5}, auth=False)
-        normalized_title = " ".join(title.casefold().split())
         target_year = int(year) if year is not None else None
         matches = []
         for result in results:
             show = result.get("show") or {}
-            if " ".join(str(show.get("title") or "").casefold().split()) != normalized_title:
+            if _normalized_show_title(str(show.get("title") or "")) != normalized_title:
                 continue
             if target_year is not None and show.get("year") != target_year:
                 continue

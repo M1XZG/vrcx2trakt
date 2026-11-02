@@ -1,4 +1,48 @@
+from unittest.mock import Mock
+
 from vrcx2trakt.trakt_client import TraktClient
+
+
+def test_search_shows_accepts_punctuation_variants_without_loosening_title_or_year():
+    client = object.__new__(TraktClient)
+    client._request = Mock(return_value=[
+        {
+            "show": {
+                "title": "Food Wars! Shokugeki no Soma: The Second Plate",
+                "year": 2015,
+                "ids": {"trakt": 1},
+            }
+        },
+        {
+            "show": {
+                "title": "Food Wars! Shokugeki no Soma",
+                "year": 2015,
+                "ids": {"trakt": 94084, "slug": "food-wars-shokugeki-no-soma"},
+            }
+        },
+        {
+            "show": {
+                "title": "Food Wars! Shokugeki no Soma",
+                "year": 2020,
+                "ids": {"trakt": 2},
+            }
+        },
+    ])
+
+    matches = client.search_shows("Food Wars Shokugeki no Soma", year=2015)
+
+    assert [show["trakt_id"] for show in matches] == [94084]
+    assert matches[0]["title"] == "Food Wars! Shokugeki no Soma"
+
+
+def test_search_shows_rejects_punctuation_only_titles():
+    client = object.__new__(TraktClient)
+    client._request = Mock(return_value=[
+        {"show": {"title": "???", "ids": {"trakt": 1}}}
+    ])
+
+    assert client.search_shows("!!!") == []
+    client._request.assert_not_called()
 
 
 def test_resolve_episode_uses_exact_show_year_and_episode_title():
