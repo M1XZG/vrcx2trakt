@@ -202,7 +202,7 @@ class TraktClient:
         return self.token
 
     def search_movie(self, title: str, year: int | str | None = None) -> dict[str, Any] | None:
-        params: dict[str, Any] = {"query": title, "limit": 5}
+        params: dict[str, Any] = {"query": title, "limit": 10}
         if year:
             params["years"] = str(year)
 
@@ -210,11 +210,19 @@ class TraktClient:
         if not results:
             return None
 
-        chosen = results[0]
+        normalized_title = _normalized_show_title(title)
+        exact_matches = [
+            item
+            for item in results
+            if _normalized_show_title(str((item.get("movie") or {}).get("title") or ""))
+            == normalized_title
+        ]
+        candidates = exact_matches or results
+        chosen = candidates[0]
         if year is not None:
             target_year = int(year)
             chosen = next(
-                (item for item in results if (item.get("movie") or {}).get("year") == target_year),
+                (item for item in candidates if (item.get("movie") or {}).get("year") == target_year),
                 chosen,
             )
 
@@ -228,6 +236,7 @@ class TraktClient:
             "score": chosen.get("score"),
             "imdb": ids.get("imdb"),
             "tmdb": ids.get("tmdb"),
+            "exact_title_match_count": len(exact_matches),
         }
 
     def search_shows(

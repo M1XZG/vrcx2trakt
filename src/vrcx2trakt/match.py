@@ -65,7 +65,7 @@ def cache_key(cand: dict) -> str:
         ep = cand.get("episode") or {}
         show, year, _ = show_details_from_episode(ep.get("show", ""))
         return f"ep|{show}|{year or ''}|{ep.get('season')}|{ep.get('episode')}"
-    return f"mv|{cand['parsed_title']}|{cand.get('parsed_year')}"
+    return f"mv2|{cand['parsed_title']}|{cand.get('parsed_year')}"
 
 
 def resolve(client, cand: dict) -> dict | None:
@@ -107,7 +107,18 @@ def resolve(client, cand: dict) -> dict | None:
         "trakt_title": m.get("title") or "",
         "trakt_year": m.get("year") or "",
         "score": m.get("score") or "",
+        "exact_title_match_count": m.get("exact_title_match_count", 0),
     }
+
+
+def movie_year_mismatch(cand: dict, match: dict | None) -> bool:
+    return bool(
+        match
+        and cand["media_type"] == "movie"
+        and cand.get("parsed_year")
+        and match.get("trakt_year")
+        and int(cand["parsed_year"]) != int(match["trakt_year"])
+    )
 
 
 def suggested_include(cand: dict, match: dict | None) -> int:
@@ -116,10 +127,10 @@ def suggested_include(cand: dict, match: dict | None) -> int:
         return 0
     if cand["media_type"] == "unknown":
         return 0  # likely music/clip; let the user opt in
-    if cand["media_type"] == "movie" and cand.get("parsed_year") and match.get("trakt_year"):
-        # Year mismatch -> probably wrong film; flag for manual check
-        if int(cand["parsed_year"]) != int(match["trakt_year"]):
-            return 0
+    if movie_year_mismatch(cand, match):
+        if cand.get("source") == "PopcornPalace" and match.get("exact_title_match_count") == 1:
+            return 1
+        return 0
     return 1
 
 
@@ -184,6 +195,12 @@ def run_match(
                 notes_parts.append("no-trakt-match")
 
         include = suggested_include(cand, match) if live else 0
+        if movie_year_mismatch(cand, match):
+            notes_parts.append(
+                f"year-mismatch={cand['parsed_year']}->{match['trakt_year']}"
+            )
+            if include:
+                notes_parts.append("unique-exact-title")
         stats["included"] += include
         rows.append({
             "include": include,

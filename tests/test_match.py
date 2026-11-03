@@ -102,3 +102,61 @@ def test_episode_cache_key_includes_show_year():
     }
 
     assert match.cache_key(candidate) == "ep|For Life|2020|1|1"
+
+
+def test_movie_cache_key_invalidates_pre_exact_title_matches():
+    candidate = {
+        "media_type": "movie",
+        "parsed_title": "Outside the Wire",
+        "parsed_year": 2016,
+    }
+
+    assert match.cache_key(candidate) == "mv2|Outside the Wire|2016"
+
+
+def test_unique_exact_popcorn_title_allows_bad_source_year():
+    candidate = {
+        "source": "PopcornPalace",
+        "media_type": "movie",
+        "parsed_title": "Outside the Wire",
+        "parsed_year": 2016,
+    }
+    resolved = {
+        "trakt_title": "Outside the Wire",
+        "trakt_year": 2021,
+        "exact_title_match_count": 1,
+    }
+
+    assert match.suggested_include(candidate, resolved) == 1
+
+
+def test_ambiguous_exact_popcorn_title_keeps_bad_year_excluded():
+    candidate = {
+        "source": "PopcornPalace",
+        "media_type": "movie",
+        "parsed_title": "The Thing",
+        "parsed_year": 2000,
+    }
+    resolved = {
+        "trakt_title": "The Thing",
+        "trakt_year": 1982,
+        "exact_title_match_count": 2,
+    }
+
+    assert match.suggested_include(candidate, resolved) == 0
+
+
+def test_non_popcorn_year_mismatch_remains_excluded():
+    candidate = {
+        "source": "Movie&Chill",
+        "media_type": "movie",
+        "parsed_title": "Outside the Wire",
+        "parsed_year": 2016,
+    }
+    resolved = {
+        "trakt_title": "Outside the Wire",
+        "trakt_year": 2021,
+        "exact_title_match_count": 1,
+    }
+
+    assert match.suggested_include(candidate, resolved) == 0

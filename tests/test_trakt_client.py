@@ -4,6 +4,59 @@ from unittest.mock import Mock
 from vrcx2trakt.trakt_client import TraktClient
 
 
+def test_search_movie_reports_unique_exact_title_when_year_hint_is_wrong():
+    client = object.__new__(TraktClient)
+    client._request = Mock(return_value=[
+        {
+            "movie": {
+                "title": "Outside the Wire",
+                "year": 2021,
+                "ids": {"trakt": 613402},
+            },
+            "score": 100,
+        },
+        {
+            "movie": {
+                "title": "Outside the Law",
+                "year": 2010,
+                "ids": {"trakt": 1},
+            },
+            "score": 90,
+        },
+    ])
+
+    result = client.search_movie("Outside the Wire", 2016)
+
+    assert result["trakt_id"] == 613402
+    assert result["year"] == 2021
+    assert result["exact_title_match_count"] == 1
+
+
+def test_search_movie_reports_ambiguous_exact_titles():
+    client = object.__new__(TraktClient)
+    client._request = Mock(return_value=[
+        {
+            "movie": {
+                "title": "The Thing",
+                "year": 1982,
+                "ids": {"trakt": 1},
+            }
+        },
+        {
+            "movie": {
+                "title": "The Thing",
+                "year": 2011,
+                "ids": {"trakt": 2},
+            }
+        },
+    ])
+
+    result = client.search_movie("The Thing", 1982)
+
+    assert result["trakt_id"] == 1
+    assert result["exact_title_match_count"] == 2
+
+
 def test_changed_credentials_remove_stale_token(monkeypatch, tmp_path):
     monkeypatch.setenv("VRCX2TRAKT_CONFIG_DIR", str(tmp_path))
     credentials = tmp_path / "credentials.json"
