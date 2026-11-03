@@ -173,6 +173,8 @@ vrcx2trakt paths
 
 The Windows builds are produced on a Windows runner and attached to GitHub Releases when a release tag is published. To build locally, use `packaging/build-windows.ps1` from a Windows PowerShell session with the project dependencies installed.
 
+Code-changing merges to `main` automatically publish the next patch release. Documentation-only and test-only changes do not create a release.
+
 ## Contributing
 
 Issues and pull requests are welcome at <https://github.com/M1XZG/vrcx2trakt>. Please keep changes focused, include tests for parsing or path behaviour where possible, and avoid committing credentials, tokens, database copies, or generated logs.

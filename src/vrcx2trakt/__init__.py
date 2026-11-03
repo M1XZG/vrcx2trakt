@@ -1,3 +1,6 @@
 """vrcx2trakt — sync movies/episodes watched in VRChat cinema worlds to Trakt.tv."""
 
-__version__ = "1.1.0"
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "0.0.0"
