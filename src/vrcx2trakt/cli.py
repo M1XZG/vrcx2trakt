@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import config, extract, match, push
+from . import config, diagnostics, extract, match, push
 from .trakt_client import TraktAuthError, TraktClient, TraktError
 
 
@@ -270,7 +270,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.func(args))
     except (TraktAuthError, TraktError, FileNotFoundError) as exc:
+        log_path = diagnostics.write_error_log(exc, context=f"CLI command: {args.command}")
         print(f"Error: {exc}", file=sys.stderr)
+        if log_path:
+            print(f"Details logged to {log_path}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001
+        log_path = diagnostics.write_error_log(exc, context=f"CLI command: {args.command}")
+        print(f"Unexpected error: {exc}", file=sys.stderr)
+        if log_path:
+            print(f"Details logged to {log_path}", file=sys.stderr)
         return 1
 
 
