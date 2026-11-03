@@ -89,6 +89,8 @@ vrcx2trakt push --check-remote
 
 The review CSV is the safety step. The `include` column controls what is pushed, `1` means push and `0` means skip. If a match is wrong, correct the `trakt_id` before pushing, or set `include` to `0`.
 
+Popcorn Palace occasionally supplies an incorrect release year. A year mismatch is included automatically only when Trakt returns one exact-title film. Same-title remakes and other ambiguous results remain excluded for review.
+
 Available commands:
 
 ```text
