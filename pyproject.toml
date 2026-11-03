@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=80", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "vrcx2trakt"
-version = "1.1.0"
+dynamic = ["version"]
 description = "Sync movies and episodes watched in VRChat cinema worlds to your Trakt.tv history."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -44,6 +44,11 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools_scm]
+version_file = "src/vrcx2trakt/_version.py"
+write_to_source = true
+fallback_version = "0.0.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

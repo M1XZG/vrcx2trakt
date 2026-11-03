@@ -6,6 +6,7 @@ __pycache__/
 build/
 dist/
 *.spec.bak
+/src/vrcx2trakt/_version.py
 
 # PyInstaller working dirs
 /build/

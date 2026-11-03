@@ -2,17 +2,57 @@ name: Release
 
 "on":
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "packaging/**"
+      - "scripts/**"
+      - "pyproject.toml"
+      - "requirements*.txt"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
+  prepare:
+    name: Prepare patch release
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Choose release version
+        id: version
+        shell: bash
+        run: |
+          current_tag="$(git tag --points-at "$GITHUB_SHA" --list "v[0-9]*.[0-9]*.[0-9]*" --sort=-version:refname | head -n 1)"
+          if [[ -n "$current_tag" ]]; then
+            tag="$current_tag"
+            version="${current_tag#v}"
+          else
+            version="$(git tag --list "v*" | python scripts/next_patch_version.py)"
+            tag="v${version}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
   build-windows:
     name: Build Windows EXEs
+    needs: prepare
     runs-on: windows-latest
+    env:
+      SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VRCX2TRAKT: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -42,19 +82,12 @@ jobs:
             dist/vrcx2trakt-gui.exe
           if-no-files-found: error
 
-      - name: Attach Windows EXEs to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/vrcx2trakt.exe
-            dist/vrcx2trakt-gui.exe
-          generate_release_notes: true
-
   build-sdist-wheel:
     name: Build Python distributions
-    needs: build-windows
+    needs: prepare
     runs-on: ubuntu-latest
+    env:
+      SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VRCX2TRAKT: ${{ needs.prepare.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -79,9 +112,58 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-      - name: Attach Python distributions to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+  publish:
+    name: Publish GitHub release
+    needs:
+      - prepare
+      - build-windows
+      - build-sdist-wheel
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
         with:
-          files: dist/*
-          generate_release_notes: true
+          fetch-depth: 0
+
+      - name: Download release artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release artefacts
+        shell: bash
+        run: |
+          test -f release-assets/vrcx2trakt.exe
+          test -f release-assets/vrcx2trakt-gui.exe
+          test -f "release-assets/vrcx2trakt-${{ needs.prepare.outputs.version }}-py3-none-any.whl"
+          test -f "release-assets/vrcx2trakt-${{ needs.prepare.outputs.version }}.tar.gz"
+
+      - name: Create or update GitHub release
+        shell: bash
+        run: |
+          if git show-ref --tags --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            tag_target="$(git rev-list -n 1 "${RELEASE_TAG}")"
+            if [[ "$tag_target" != "$GITHUB_SHA" ]]; then
+              echo "Tag ${RELEASE_TAG} points to ${tag_target}, expected ${GITHUB_SHA}." >&2
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "${RELEASE_TAG}" "$GITHUB_SHA" -m "${RELEASE_TAG}"
+            git push origin "${RELEASE_TAG}"
+          fi
+
+          if gh release view "${RELEASE_TAG}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "${RELEASE_TAG}" release-assets/* \
+              --generate-notes \
+              --title "${RELEASE_TAG}" \
+              --verify-tag \
+              --repo "$GITHUB_REPOSITORY"
+          fi
