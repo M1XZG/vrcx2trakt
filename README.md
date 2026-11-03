@@ -134,6 +134,8 @@ Working state, logs, the database copy, `candidates.json`, `review.csv`, and `pu
 - Windows: `%LOCALAPPDATA%\vrcx2trakt`
 - Linux and macOS: `~/.local/state/vrcx2trakt`
 
+Unexpected CLI and GUI errors are saved under `logs` as timestamped `error-*.log` files. Scheduled sync runs use `sync-*.log` files in the same folder. Error dialogs and console messages print the exact log path.
+
 Files in the config directory:
 
 - `credentials.json`, your Trakt app `client_id` and `client_secret`.

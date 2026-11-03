@@ -74,6 +74,12 @@ class TraktClient:
         config.ensure_config_dir()
         path = config.config_dir() / "credentials.json"
         data = {"client_id": str(client_id).strip(), "client_secret": str(client_secret).strip()}
+        existing = None
+        if path.exists():
+            try:
+                existing = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                existing = None
         tmp = path.with_name(path.name + ".tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -85,6 +91,10 @@ class TraktClient:
                 os.chmod(path, 0o600)
             except OSError:
                 pass
+        if existing != data:
+            token_path = config.token_path()
+            if token_path.exists():
+                token_path.unlink()
         return path
 
     def login(self) -> dict[str, Any]:

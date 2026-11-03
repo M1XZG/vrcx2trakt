@@ -7,7 +7,7 @@ import queue
 import threading
 import webbrowser
 
-from . import config, extract, match, push
+from . import config, diagnostics, extract, match, push
 from .trakt_client import TraktAuthError, TraktClient, TraktError
 
 
@@ -236,12 +236,15 @@ def main() -> int:
                 self._append_log(f"{title} complete.")
                 return
             if kind == "worker_error":
-                _, title, exc, button = item
+                _, title, exc, log_path, button = item
                 if button is not None:
                     button.configure(state="normal")
                 self.refresh_status()
                 message = _clean_message(exc)
                 self._append_log(f"{title} failed: {message}")
+                if log_path:
+                    self._append_log(f"Details logged to {log_path}")
+                    message += f"\n\nDetails were saved to:\n{log_path}"
                 messagebox.showerror(title, message)
                 return
             if kind == "match_progress":
@@ -278,7 +281,8 @@ def main() -> int:
                 try:
                     result = work()
                 except (TraktError, TraktAuthError, FileNotFoundError, Exception) as exc:  # noqa: BLE001
-                    self.ui_queue.put(("worker_error", title, exc, button))
+                    log_path = diagnostics.write_error_log(exc, context=f"GUI task: {title}")
+                    self.ui_queue.put(("worker_error", title, exc, log_path, button))
                 else:
                     self.ui_queue.put(("worker_success", title, result, button, on_success))
 
@@ -627,11 +631,37 @@ def main() -> int:
     try:
         root = tk.Tk()
     except Exception as exc:  # pragma: no cover, depends on display availability
+        log_path = diagnostics.write_error_log(exc, context="GUI startup")
         print(f"Could not start the vrcx2trakt desktop app: {exc}")
+        if log_path:
+            print(f"Details logged to {log_path}")
         return 1
 
-    Vrcx2TraktApp(root)
-    root.mainloop()
+    def report_callback_exception(exc_type, exc, traceback_obj) -> None:
+        log_path = diagnostics.write_error_log(
+            exc,
+            context="GUI callback",
+            traceback_obj=traceback_obj,
+        )
+        message = _clean_message(exc)
+        if log_path:
+            message += f"\n\nDetails were saved to:\n{log_path}"
+        messagebox.showerror("Unexpected error", message)
+
+    root.report_callback_exception = report_callback_exception
+    try:
+        Vrcx2TraktApp(root)
+        root.mainloop()
+    except Exception as exc:  # noqa: BLE001
+        log_path = diagnostics.write_error_log(exc, context="GUI main loop")
+        message = _clean_message(exc)
+        if log_path:
+            message += f"\n\nDetails were saved to:\n{log_path}"
+        try:
+            messagebox.showerror("Unexpected error", message)
+        except Exception:
+            print(f"Unexpected GUI error: {message}")
+        return 1
     return 0
 
 

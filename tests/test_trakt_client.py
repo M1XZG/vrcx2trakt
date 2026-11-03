@@ -1,6 +1,35 @@
+import json
 from unittest.mock import Mock
 
 from vrcx2trakt.trakt_client import TraktClient
+
+
+def test_changed_credentials_remove_stale_token(monkeypatch, tmp_path):
+    monkeypatch.setenv("VRCX2TRAKT_CONFIG_DIR", str(tmp_path))
+    credentials = tmp_path / "credentials.json"
+    token = tmp_path / "token.json"
+    credentials.write_text(
+        json.dumps({"client_id": "old-id", "client_secret": "old-secret"}),
+        encoding="utf-8",
+    )
+    token.write_text(json.dumps({"refresh_token": "stale"}), encoding="utf-8")
+
+    TraktClient.save_credentials("new-id", "new-secret")
+
+    assert not token.exists()
+
+
+def test_unchanged_credentials_keep_token(monkeypatch, tmp_path):
+    monkeypatch.setenv("VRCX2TRAKT_CONFIG_DIR", str(tmp_path))
+    credentials = tmp_path / "credentials.json"
+    token = tmp_path / "token.json"
+    data = {"client_id": "same-id", "client_secret": "same-secret"}
+    credentials.write_text(json.dumps(data), encoding="utf-8")
+    token.write_text(json.dumps({"refresh_token": "current"}), encoding="utf-8")
+
+    TraktClient.save_credentials(data["client_id"], data["client_secret"])
+
+    assert token.exists()
 
 
 def test_search_shows_accepts_punctuation_variants_without_loosening_title_or_year():
